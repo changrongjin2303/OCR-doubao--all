@@ -1,0 +1,44 @@
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
+env/
+venv/
+ENV/
+.venv
+pip-log.txt
+pip-delete-this-directory.txt
+
+# 环境变量（包含敏感信息）
+.env
+.env.local
+
+# 上传和输出文件
+uploads/*
+!uploads/.gitkeep
+output/*
+!output/.gitkeep
+!output/excel/.gitkeep
+!output/word/.gitkeep
+!output/tmp/.gitkeep
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+
+# 系统文件
+.DS_Store
+Thumbs.db
+
+# 日志
+*.log
+
+# 临时文件
+*.tmp
+*.temp
+

@@ -1,0 +1,268 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>处理中…</title>
+  <style>
+    body { 
+      font-family: -apple-system, BlinkMacSystemFont, Segoe UI, Roboto, Helvetica, Arial, sans-serif; 
+      margin: 0;
+      padding: 40px;
+      background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+      min-height: 100vh;
+    }
+    .card { 
+      max-width: 720px; 
+      margin: 0 auto; 
+      padding: 32px; 
+      background: white;
+      border-radius: 16px;
+      box-shadow: 0 20px 60px rgba(0,0,0,0.15);
+    }
+    h1 { 
+      font-size: 22px; 
+      margin: 0 0 12px; 
+      color: #1a1a2e; 
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+    }
+    .timer-box {
+      font-size: 16px;
+      font-weight: 600;
+      color: #667eea;
+      background: linear-gradient(135deg, rgba(102, 126, 234, 0.1) 0%, rgba(118, 75, 162, 0.1) 100%);
+      padding: 6px 12px;
+      border-radius: 8px;
+      border: 1px solid rgba(102, 126, 234, 0.2);
+      min-width: 80px;
+      text-align: center;
+    }
+    h2 { font-size: 18px; color: #374151; }
+    .row { margin-top: 14px; }
+    .bar { background:#e5e7eb; height: 12px; border-radius: 8px; overflow:hidden; }
+    .bar > .fill { 
+      background: linear-gradient(90deg, #667eea 0%, #764ba2 100%);
+      height: 100%; 
+      width:0%; 
+      transition: width .3s ease; 
+    }
+    .meta { color:#6b7280; }
+    .ok { color:#16a34a; }
+    .err { color:#b91c1c; }
+    .btn { 
+      display:inline-block; 
+      background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+      color:#fff; 
+      text-decoration:none; 
+      padding:10px 16px; 
+      border-radius:8px;
+      border: none;
+      cursor: pointer;
+      font-size: 14px;
+      margin-right: 8px;
+      transition: transform 0.2s, box-shadow 0.2s;
+    }
+    .btn:hover {
+      transform: translateY(-2px);
+      box-shadow: 0 4px 12px rgba(102, 126, 234, 0.4);
+    }
+    .hint-box {
+      margin-top:8px;
+      padding:12px;
+      background:#fef3c7;
+      border-radius:8px;
+      font-size:13px;
+      border-left: 3px solid #f59e0b;
+    }
+    ul { padding-left: 20px; }
+    ul li { margin-bottom: 4px; }
+  </style>
+</head>
+<body>
+  <div class="card">
+    <h1>
+      <span>⏳ 处理中：{{ t.pdf_name }}</span>
+      <span class="timer-box" id="elapsedTime">00:00</span>
+    </h1>
+    <div class="meta">
+      模式：<b>{% if mode == 'table' %}📊 表格提取 → Excel{% else %}📝 文字识别 → Word{% endif %}</b>
+      &nbsp;|&nbsp;
+      预计处理图片总数：<b>{{ t.total }}</b>
+      {% if t.embedded > 0 and t.pages > 0 %}
+        （内嵌图片 {{ t.embedded }} + 整页渲染 {{ t.pages }} = {{ t.total }}）
+      {% elif t.embedded > 0 %}
+        （仅内嵌图片 {{ t.embedded }}）
+      {% elif t.pages > 0 %}
+        （仅整页渲染 {{ t.pages }}）
+      {% endif %}
+    </div>
+    {% if t.embedded > 0 and t.pages == 0 %}
+    <div class="hint-box">
+      💡 <b>提示：</b>当前仅提取PDF中的内嵌图片对象（{{ t.embedded }}个）。如需处理所有页面，请在启动时设置 <code>ARK_SOURCE=both</code> 或 <code>page</code>
+    </div>
+    {% endif %}
+
+    <div class="row bar"><div id="fill" class="fill"></div></div>
+    <div class="row meta">
+      进度：<span id="progress">0 / {{ t.total }}</span>
+    </div>
+    <div class="row" id="statusText">状态：{{ t.status }}</div>
+
+    <div class="row" id="errors"></div>
+
+    <div class="row">
+      <button id="btnPause" class="btn" style="background:#f59e0b">⏸️ 暂停</button>
+      <button id="btnResume" class="btn" style="background:#3b82f6">▶️ 继续</button>
+      <button id="btnStop" class="btn" style="background:#ef4444">⏹️ 终止并保存</button>
+    </div>
+
+    <div class="row" id="result"></div>
+
+    <div class="row">
+      <a class="btn" href="/" style="background:#10b981">🏠 返回主页</a>
+    </div>
+  </div>
+
+  <script>
+    const taskId = "{{ task_id }}";
+    const initialMode = "{{ mode }}";  // 初始模式，从服务器获取
+    let startTime = null;  // 开始时间戳
+    
+    // 格式化时间显示
+    function formatTime(seconds) {
+      const hours = Math.floor(seconds / 3600);
+      const minutes = Math.floor((seconds % 3600) / 60);
+      const secs = Math.floor(seconds % 60);
+      
+      if (hours > 0) {
+        return `${hours.toString().padStart(2, '0')}:${minutes.toString().padStart(2, '0')}:${secs.toString().padStart(2, '0')}`;
+      } else {
+        return `${minutes.toString().padStart(2, '0')}:${secs.toString().padStart(2, '0')}`;
+      }
+    }
+    
+    // 更新计时器显示
+    function updateTimer() {
+      if (startTime === null) return;
+      const elapsed = (Date.now() / 1000) - startTime;
+      document.getElementById('elapsedTime').textContent = formatTime(elapsed);
+    }
+    
+    async function poll(){
+      try {
+        const resp = await fetch(`/status/${taskId}`);
+        if(!resp.ok) return;
+        const j = await resp.json();
+        const total = j.total || 0;
+        const done = j.done || 0;
+        const mode = j.mode || initialMode || 'text';
+        const pct = total > 0 ? Math.floor(done*100/total) : 0;
+        document.getElementById('fill').style.width = pct + '%';
+        document.getElementById('progress').textContent = `${done} / ${total}`;
+        document.getElementById('statusText').textContent = `状态：${j.status}`;
+        
+        // 更新计时器（使用服务器返回的时间，更准确）
+        if (j.elapsed_time !== undefined) {
+          document.getElementById('elapsedTime').textContent = formatTime(j.elapsed_time);
+          // 如果还没设置开始时间，根据服务器时间推算
+          if (startTime === null && j.elapsed_time > 0) {
+            startTime = (Date.now() / 1000) - j.elapsed_time;
+          }
+        }
+        const errs = j.errors || [];
+        if(errs.length){
+          const noContentCount = errs.filter(e => e.error === 'no_content' || e.error === 'no_tables').length;
+          let hint = '';
+          if(noContentCount > 0 && noContentCount === errs.length){
+            const contentType = mode === 'table' ? '表格' : '文字内容';
+            hint = `<div class="hint-box" style="margin-top:12px;">
+              💡 <b>提示：</b>所有图片均未识别到${contentType}。这通常是因为：<br>
+              • 当前使用 <code>embedded</code> 模式，但PDF内嵌图片不包含${contentType}<br>
+              • 建议：在 <code>.env</code> 文件中设置 <code>ARK_SOURCE=page</code> 或 <code>both</code>，然后重新上传处理
+            </div>`;
+          }
+          const items = errs.map(e => `<li><b>${e.image||''}</b> - ${e.error||''}</li>`).join('');
+          document.getElementById('errors').innerHTML = `<div class="err">⚠️ 警告：${errs.length} 条</div><ul>${items}</ul>${hint}`;
+        } else {
+          document.getElementById('errors').innerHTML = '';
+        }
+        if(j.status === 'completed'){
+          let html = '';
+          if(mode === 'table'){
+            const fname = `${j.pdf_name}.xlsx`;
+            html = `
+              <h2 style="margin-top:16px">✅ 处理完成</h2>
+              <div class="row">
+                <a class="btn" href="/download_excel/${j.pdf_name}">📥 下载 Excel 表格</a>
+              </div>
+              <div class="row">
+                <h3 style="font-size:16px;margin:10px 0 6px">📊 生成的文件</h3>
+                <ul><li>📊 <a href="/download_excel/${j.pdf_name}" download>${fname}</a></li></ul>
+              </div>
+            `;
+          } else {
+            const fname = `${j.pdf_name}.docx`;
+            html = `
+              <h2 style="margin-top:16px">✅ 处理完成</h2>
+              <div class="row">
+                <a class="btn" href="/download_word/${j.pdf_name}">📥 下载 Word 文档</a>
+              </div>
+              <div class="row">
+                <h3 style="font-size:16px;margin:10px 0 6px">📄 生成的文件</h3>
+                <ul><li>📝 <a href="/download_word/${j.pdf_name}" download>${fname}</a></li></ul>
+              </div>
+            `;
+          }
+          document.getElementById('result').innerHTML = html;
+          if(window.__pollTimer){
+            clearInterval(window.__pollTimer);
+            window.__pollTimer = null;
+          }
+        }
+      } catch(e){ /* ignore */ }
+    }
+    const POLL_MS = {{ poll_ms }};
+    window.__pollTimer = setInterval(poll, POLL_MS);
+    // 启动本地计时器（每秒更新一次，更流畅）
+    window.__localTimer = setInterval(updateTimer, 1000);
+    poll();
+    
+    // 页面卸载时清理计时器
+    window.addEventListener('beforeunload', () => {
+      if (window.__pollTimer) clearInterval(window.__pollTimer);
+      if (window.__localTimer) clearInterval(window.__localTimer);
+    });
+
+    async function post(url){
+      try{ const r = await fetch(url, { method:'POST' }); return await r.json(); }catch(e){ return {}; }
+    }
+    document.getElementById('btnPause').onclick = async ()=>{
+      const btn = document.getElementById('btnPause');
+      btn.disabled = true;
+      btn.style.opacity = '0.6';
+      await post(`/task/${taskId}/pause`);
+      document.getElementById('statusText').textContent = '状态：paused';
+      btn.disabled = false;
+      btn.style.opacity = '1';
+    };
+    document.getElementById('btnResume').onclick = async ()=>{
+      const btn = document.getElementById('btnResume');
+      btn.disabled = true;
+      btn.style.opacity = '0.6';
+      await post(`/task/${taskId}/resume`);
+      btn.disabled = false;
+      btn.style.opacity = '1';
+    };
+    document.getElementById('btnStop').onclick = async ()=>{
+      const btn = document.getElementById('btnStop');
+      btn.disabled = true;
+      btn.textContent = '正在终止...';
+      btn.style.opacity = '0.6';
+      await post(`/task/${taskId}/stop`);
+      document.getElementById('statusText').textContent = '状态：stopping...';
+    };
+  </script>
+</body>
+</html>
