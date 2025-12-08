@@ -145,6 +145,14 @@
     
     // 更新计时器显示
     function updateTimer() {
+      // 如果任务已完成，停止计时器
+      if (window.__taskCompleted) {
+        if (window.__localTimer) {
+          clearInterval(window.__localTimer);
+          window.__localTimer = null;
+        }
+        return;
+      }
       if (startTime === null) return;
       const elapsed = (Date.now() / 1000) - startTime;
       document.getElementById('elapsedTime').textContent = formatTime(elapsed);
@@ -189,6 +197,24 @@
           document.getElementById('errors').innerHTML = '';
         }
         if(j.status === 'completed'){
+          // 标记任务已完成
+          window.__taskCompleted = true;
+          
+          // 停止计时器
+          if(window.__localTimer){
+            clearInterval(window.__localTimer);
+            window.__localTimer = null;
+          }
+          // 停止轮询
+          if(window.__pollTimer){
+            clearInterval(window.__pollTimer);
+            window.__pollTimer = null;
+          }
+          // 使用服务器返回的最终时间（更准确）
+          if (j.elapsed_time !== undefined) {
+            document.getElementById('elapsedTime').textContent = formatTime(j.elapsed_time);
+          }
+          
           let html = '';
           if(mode === 'table'){
             const fname = `${j.pdf_name}.xlsx`;
@@ -216,10 +242,6 @@
             `;
           }
           document.getElementById('result').innerHTML = html;
-          if(window.__pollTimer){
-            clearInterval(window.__pollTimer);
-            window.__pollTimer = null;
-          }
         }
       } catch(e){ /* ignore */ }
     }
