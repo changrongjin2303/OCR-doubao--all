@@ -49,8 +49,8 @@ if [ -n "$SSH_KEY" ]; then
     SSH_CMD="ssh -i $SSH_KEY -o StrictHostKeyChecking=no $SERVER_USER@$SERVER_IP"
     SCP_CMD="scp -i $SSH_KEY -o StrictHostKeyChecking=no"
 elif [ -n "$SERVER_PASS" ]; then
-    SSH_CMD="sshpass -p '$SERVER_PASS' ssh -o StrictHostKeyChecking=no $SERVER_USER@$SERVER_IP"
-    SCP_CMD="sshpass -p '$SERVER_PASS' scp -o StrictHostKeyChecking=no"
+    SSH_CMD="sshpass -p $SERVER_PASS ssh -o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null $SERVER_USER@$SERVER_IP"
+    SCP_CMD="sshpass -p $SERVER_PASS scp -o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null"
 else
     SSH_CMD="ssh -o StrictHostKeyChecking=no $SERVER_USER@$SERVER_IP"
     SCP_CMD="scp -o StrictHostKeyChecking=no"
@@ -91,18 +91,19 @@ echo -e "${YELLOW}4. 克隆或更新代码...${NC}"
 $SSH_CMD "if [ -d $DEPLOY_PATH/.git ]; then
     cd $DEPLOY_PATH && git pull
 else
-    git clone git@github.com:changrongjin2303/OCR-doubao--all.git $DEPLOY_PATH || git clone https://github.com/changrongjin2303/OCR-doubao--all.git $DEPLOY_PATH
+    git clone https://github.com/changrongjin2303/OCR-doubao--all.git $DEPLOY_PATH
 fi"
 
 echo -e "${YELLOW}5. 检查Python环境...${NC}"
-$SSH_CMD "cd $DEPLOY_PATH && python3 --version || (echo 'Python3未安装，正在安装...' && apt-get update && apt-get install -y python3 python3-pip python3-venv)"
+$SSH_CMD "python3 --version || (echo 'Python3未安装，正在安装...' && apt-get update && apt-get install -y python3 python3-pip python3-venv)"
+$SSH_CMD "python3 -m venv --help > /dev/null 2>&1 || (echo '安装python3-venv...' && apt-get update && apt-get install -y python3-venv)"
 
 echo -e "${YELLOW}6. 创建虚拟环境并安装依赖...${NC}"
 $SSH_CMD "cd $DEPLOY_PATH && 
     if [ ! -d venv ]; then
-        python3 -m venv venv
+        python3 -m venv venv || (apt-get update && apt-get install -y python3-venv && python3 -m venv venv)
     fi &&
-    source venv/bin/activate &&
+    . venv/bin/activate &&
     pip install --upgrade pip &&
     pip install -r requirements.txt"
 

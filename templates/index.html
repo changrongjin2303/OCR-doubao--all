@@ -177,9 +177,9 @@
     <p class="subtitle">支持文字识别和表格提取，灵活输出 Word 或 Excel 文档</p>
     
     {% if ark_ok %}
-      <div class="hint ok">✅ Ark API 已配置，可直接上传处理。</div>
+      <div class="hint ok">✅ 豆包 API 已配置，可直接上传处理。</div>
     {% else %}
-      <div class="hint error">❌ 未检测到 Ark 配置。请在终端先设置环境变量：<code>export ARK_API_KEY=...; export ARK_BASE_URL=https://ark.cn-beijing.volces.com/api/v3</code></div>
+      <div class="hint error">❌ 未检测到 API 配置。请在终端先设置环境变量：<code>export ARK_API_KEY=...; export ARK_BASE_URL=https://ark.cn-beijing.volces.com/api/v3</code><br><small>（通过火山引擎 Ark 平台访问豆包 Vision API）</small></div>
     {% endif %}
     <div class="hint">当前图片来源模式：<b>{{ source }}</b>（可通过环境变量 <code>ARK_SOURCE</code> 设置为 <code>both</code> / <code>embedded</code> / <code>page</code>）</div>
 

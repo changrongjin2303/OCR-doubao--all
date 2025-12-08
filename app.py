@@ -46,7 +46,7 @@ def index():
 def upload():
     if not has_ark_config():
         return (
-            "缺少 Ark API 配置，请先在终端设置 ARK_API_KEY 与 ARK_BASE_URL",
+            "缺少 API 配置，请先在终端设置 ARK_API_KEY 与 ARK_BASE_URL（通过火山引擎 Ark 平台访问豆包 API）",
             400,
         )
     files = request.files.getlist("files")

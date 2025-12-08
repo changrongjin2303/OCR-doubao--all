@@ -40,10 +40,12 @@ ARK_WORKERS=4
 pip install -r requirements.txt
 ```
 
-2) 配置豆包 Ark API：
+2) 配置豆包 Vision API：
 
-- `ARK_API_KEY`：你的 API Key（例如火山引擎 Ark 平台的密钥）
-- `ARK_BASE_URL`：基础地址，例如 `https://ark.cn-beijing.volces.com/api/v3`
+- `ARK_API_KEY`：你的 API Key（在火山引擎 Ark 平台获取）
+- `ARK_BASE_URL`：API 基础地址，例如 `https://ark.cn-beijing.volces.com/api/v3`
+  
+  **说明**：本系统通过火山引擎的 **Ark 平台**访问**豆包（Doubao）Vision API**。Ark 是字节跳动的 API 服务平台，豆包是 AI 模型产品。
 
 在 macOS/Linux 终端中可临时设置：
 
