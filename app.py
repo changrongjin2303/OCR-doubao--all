@@ -3,6 +3,7 @@ import shutil
 import threading
 import uuid
 import time
+import json
 from pathlib import Path
 from typing import List, Dict, Any
 
@@ -18,6 +19,7 @@ UPLOAD_DIR = BASE_DIR / "uploads"
 OUTPUT_DIR = BASE_DIR / "output"
 WORD_DIR = OUTPUT_DIR / "word"
 EXCEL_DIR = OUTPUT_DIR / "excel"
+NAME_MAPPING_FILE = OUTPUT_DIR / ".name_mapping.json"  # 保存批次ID到显示名称的映射
 
 ensure_dir(UPLOAD_DIR)
 ensure_dir(OUTPUT_DIR)
@@ -29,6 +31,28 @@ app = Flask(__name__)
 
 # 简单的内存任务状态存储
 TASKS: Dict[str, Dict[str, Any]] = {}
+
+
+def load_name_mapping() -> Dict[str, str]:
+    """加载批次ID到显示名称的映射"""
+    if NAME_MAPPING_FILE.exists():
+        try:
+            with open(NAME_MAPPING_FILE, 'r', encoding='utf-8') as f:
+                return json.load(f)
+        except Exception:
+            return {}
+    return {}
+
+
+def save_name_mapping(batch_id: str, display_name: str) -> None:
+    """保存批次ID到显示名称的映射"""
+    mapping = load_name_mapping()
+    mapping[batch_id] = display_name
+    try:
+        with open(NAME_MAPPING_FILE, 'w', encoding='utf-8') as f:
+            json.dump(mapping, f, ensure_ascii=False, indent=2)
+    except Exception:
+        pass
 
 
 def has_ark_config() -> bool:
@@ -171,6 +195,10 @@ def upload():
         # 内部使用批次ID（用于文件保存，避免文件名冲突和特殊字符问题）
         batch_id = f"images-batch-{uuid.uuid4().hex[:8]}"
         task_id = uuid.uuid4().hex
+        
+        # 保存批次ID到显示名称的映射（持久化）
+        save_name_mapping(batch_id, display_name)
+        
         TASKS[task_id] = {
             "pdf_name": display_name,  # 显示名称（用户看到的）
             "batch_id": batch_id,      # 内部批次ID（用于保存文件）
@@ -304,6 +332,8 @@ def download_zip(pdf_name: str):
 def download_word(pdf_name: str):
     # 查找对应的任务，获取显示名称
     display_name = pdf_name
+    
+    # 先从内存中查找
     for task_id, task_info in TASKS.items():
         batch_id = task_info.get("batch_id")
         if batch_id == pdf_name:
@@ -313,6 +343,11 @@ def download_word(pdf_name: str):
             # 如果是PDF，直接使用pdf_name
             display_name = pdf_name
             break
+    
+    # 如果内存中没找到，从持久化映射中查找（处理服务重启的情况）
+    if display_name == pdf_name and pdf_name.startswith("images-batch-"):
+        mapping = load_name_mapping()
+        display_name = mapping.get(pdf_name, pdf_name)
     
     word_file = WORD_DIR / f"{pdf_name}.docx"
     if not word_file.exists():
@@ -327,6 +362,8 @@ def download_word(pdf_name: str):
 def download_excel(pdf_name: str):
     # 查找对应的任务，获取显示名称
     display_name = pdf_name
+    
+    # 先从内存中查找
     for task_id, task_info in TASKS.items():
         batch_id = task_info.get("batch_id")
         if batch_id == pdf_name:
@@ -336,6 +373,11 @@ def download_excel(pdf_name: str):
             # 如果是PDF，直接使用pdf_name
             display_name = pdf_name
             break
+    
+    # 如果内存中没找到，从持久化映射中查找（处理服务重启的情况）
+    if display_name == pdf_name and pdf_name.startswith("images-batch-"):
+        mapping = load_name_mapping()
+        display_name = mapping.get(pdf_name, pdf_name)
     
     excel_file = EXCEL_DIR / f"{pdf_name}.xlsx"
     if not excel_file.exists():
