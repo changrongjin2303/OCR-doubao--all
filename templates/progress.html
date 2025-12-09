@@ -215,29 +215,33 @@
             document.getElementById('elapsedTime').textContent = formatTime(j.elapsed_time);
           }
           
+          // 使用实际文件名（file_name）进行下载，显示名称（pdf_name）用于界面
+          const file_name = j.file_name || j.pdf_name;  // 优先使用批次ID
+          const display_name = j.pdf_name;  // 显示名称
+          
           let html = '';
           if(mode === 'table'){
-            const fname = `${j.pdf_name}.xlsx`;
+            const fname = `${file_name}.xlsx`;
             html = `
               <h2 style="margin-top:16px">✅ 处理完成</h2>
               <div class="row">
-                <a class="btn" href="/download_excel/${j.pdf_name}">📥 下载 Excel 表格</a>
+                <a class="btn" href="/download_excel/${file_name}">📥 下载 Excel 表格</a>
               </div>
               <div class="row">
                 <h3 style="font-size:16px;margin:10px 0 6px">📊 生成的文件</h3>
-                <ul><li>📊 <a href="/download_excel/${j.pdf_name}" download>${fname}</a></li></ul>
+                <ul><li>📊 <a href="/download_excel/${file_name}" download>${display_name}.xlsx</a></li></ul>
               </div>
             `;
           } else {
-            const fname = `${j.pdf_name}.docx`;
+            const fname = `${file_name}.docx`;
             html = `
               <h2 style="margin-top:16px">✅ 处理完成</h2>
               <div class="row">
-                <a class="btn" href="/download_word/${j.pdf_name}">📥 下载 Word 文档</a>
+                <a class="btn" href="/download_word/${file_name}">📥 下载 Word 文档</a>
               </div>
               <div class="row">
                 <h3 style="font-size:16px;margin:10px 0 6px">📄 生成的文件</h3>
-                <ul><li>📝 <a href="/download_word/${j.pdf_name}" download>${fname}</a></li></ul>
+                <ul><li>📝 <a href="/download_word/${file_name}" download>${display_name}.docx</a></li></ul>
               </div>
             `;
           }

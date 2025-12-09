@@ -273,9 +273,13 @@ def status(task_id: str):
         total_pause_time += time.time() - t["pause_start"]
     elapsed_time = (time.time() - start_time) - total_pause_time
     
+    # 对于图片批次，返回批次ID用于下载，显示名称用于界面显示
+    file_name = t.get("batch_id") or t.get("pdf_name")  # 优先使用批次ID（如果存在）
+    
     return {
         "task_id": task_id,
-        "pdf_name": t.get("pdf_name"),
+        "pdf_name": t.get("pdf_name"),  # 显示名称
+        "file_name": file_name,  # 实际文件名（用于下载）
         "status": t.get("status"),
         "total": t.get("total", 0),
         "done": t.get("done", 0),
