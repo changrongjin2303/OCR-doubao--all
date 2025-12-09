@@ -302,18 +302,48 @@ def download_zip(pdf_name: str):
 
 @app.route("/download_word/<pdf_name>")
 def download_word(pdf_name: str):
+    # 查找对应的任务，获取显示名称
+    display_name = pdf_name
+    for task_id, task_info in TASKS.items():
+        batch_id = task_info.get("batch_id")
+        if batch_id == pdf_name:
+            display_name = task_info.get("pdf_name", pdf_name)
+            break
+        elif task_info.get("pdf_name") == pdf_name:
+            # 如果是PDF，直接使用pdf_name
+            display_name = pdf_name
+            break
+    
     word_file = WORD_DIR / f"{pdf_name}.docx"
     if not word_file.exists():
         abort(404)
-    return send_file(word_file, as_attachment=True, download_name=f"{word_file.name}")
+    
+    # 使用显示名称作为下载文件名
+    download_filename = f"{display_name}.docx"
+    return send_file(word_file, as_attachment=True, download_name=download_filename)
 
 
 @app.route("/download_excel/<pdf_name>")
 def download_excel(pdf_name: str):
+    # 查找对应的任务，获取显示名称
+    display_name = pdf_name
+    for task_id, task_info in TASKS.items():
+        batch_id = task_info.get("batch_id")
+        if batch_id == pdf_name:
+            display_name = task_info.get("pdf_name", pdf_name)
+            break
+        elif task_info.get("pdf_name") == pdf_name:
+            # 如果是PDF，直接使用pdf_name
+            display_name = pdf_name
+            break
+    
     excel_file = EXCEL_DIR / f"{pdf_name}.xlsx"
     if not excel_file.exists():
         abort(404)
-    return send_file(excel_file, as_attachment=True, download_name=f"{excel_file.name}")
+    
+    # 使用显示名称作为下载文件名
+    download_filename = f"{display_name}.xlsx"
+    return send_file(excel_file, as_attachment=True, download_name=download_filename)
 
 
 @app.route("/files/<pdf_name>/<path:fname>")
