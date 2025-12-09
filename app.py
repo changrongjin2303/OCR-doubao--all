@@ -159,10 +159,21 @@ def upload():
 
     # 为图片批次创建一个任务
     if image_paths:
-        batch_name = f"images-batch-{uuid.uuid4().hex[:8]}"
+        # 使用原始文件名作为显示名称
+        if len(image_paths) == 1:
+            # 单个文件：使用文件名（去掉扩展名）
+            display_name = image_paths[0].stem
+        else:
+            # 多个文件：使用第一个文件名 + "等X个文件"
+            first_name = image_paths[0].stem
+            display_name = f"{first_name}等{len(image_paths)}个文件"
+        
+        # 内部使用批次ID（用于文件保存，避免文件名冲突和特殊字符问题）
+        batch_id = f"images-batch-{uuid.uuid4().hex[:8]}"
         task_id = uuid.uuid4().hex
         TASKS[task_id] = {
-            "pdf_name": batch_name,
+            "pdf_name": display_name,  # 显示名称（用户看到的）
+            "batch_id": batch_id,      # 内部批次ID（用于保存文件）
             "status": "pending",
             "total": len(image_paths),
             "done": 0,
@@ -193,14 +204,14 @@ def upload():
                 t["status"] = "completed"
                 t["done"] = data.get("done", t["done"]) or t["total"]
 
-        def _worker_images(imgs=image_paths, bname=batch_name, cb=_cb_imgs, mode=extract_mode):
+        def _worker_images(imgs=image_paths, bname=batch_id, cb=_cb_imgs, mode=extract_mode):
             try:
                 def _control():
                     t = TASKS.get(task_id, {})
                     return t.get("control", {})
                 process_images(
                     image_paths=imgs,
-                    batch_name=bname,
+                    batch_name=bname,  # 使用批次ID保存文件（避免文件名冲突）
                     output_root=OUTPUT_DIR,
                     api_key=os.getenv("ARK_API_KEY"),
                     base_url=os.getenv("ARK_BASE_URL").rstrip("/"),
