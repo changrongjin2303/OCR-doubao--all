@@ -63,19 +63,51 @@ def has_ark_config() -> bool:
 def index():
     ark_ok = has_ark_config()
     source = os.getenv("ARK_SOURCE", "both")
-    return render_template("index.html", ark_ok=ark_ok, source=source)
+    # 提供默认的 base_url 示例（如果环境变量中有的话）
+    default_base_url = os.getenv("ARK_BASE_URL", "https://ark.cn-beijing.volces.com/api/v3")
+    admin_password_set = bool(os.getenv("ARK_ADMIN_PASSWORD"))
+    return render_template(
+        "index.html",
+        ark_ok=ark_ok,
+        source=source,
+        default_base_url=default_base_url,
+        admin_password_set=admin_password_set,
+    )
 
 
 @app.route("/upload", methods=["POST"])
 def upload():
-    if not has_ark_config():
-        return (
-            "缺少 API 配置，请先在终端设置 ARK_API_KEY 与 ARK_BASE_URL（通过火山引擎 Ark 平台访问豆包 API）",
-            400,
-        )
     files = request.files.getlist("files")
     if not files:
         return ("请至少选择一个 PDF 或图片", 400)
+
+    # API 配置：必须提供用户 API key，或输入管理密码以使用服务器环境变量
+    api_key = request.form.get("api_key", "").strip()
+    base_url = request.form.get("base_url", "").strip()
+    admin_password = request.form.get("admin_password", "").strip()
+
+    env_api_key = os.getenv("ARK_API_KEY", "").strip()
+    env_base_url = os.getenv("ARK_BASE_URL", "").strip()
+    env_admin_pwd = os.getenv("ARK_ADMIN_PASSWORD", "").strip()
+
+    if api_key:
+        if not base_url:
+            return ("缺少 Base URL，请填写后再提交", 400)
+    elif admin_password:
+        if not env_admin_pwd:
+            return ("服务器未配置管理密码，无法使用默认 API 配置", 400)
+        if admin_password != env_admin_pwd:
+            return ("管理密码错误，无法使用默认 API 配置", 403)
+        api_key = env_api_key
+        base_url = env_base_url
+    else:
+        return ("请先填写 API Key，或输入管理密码以使用服务器默认配置", 400)
+
+    if not api_key or not base_url:
+        return (
+            "缺少 API 配置，请输入完整的 API Key 与 Base URL，或联系管理员检查服务器环境变量",
+            400,
+        )
 
     # 获取识别模式：text（文字识别->Word）或 table（表格提取->Excel）
     extract_mode = request.form.get("mode", "text")
@@ -154,7 +186,7 @@ def upload():
                 t["status"] = "completed"
                 t["done"] = data.get("done", t["done"]) or t["total"]
 
-        def _worker_pdf(pdfp=pdf_path, cb=_cb_pdf, mode=extract_mode):
+        def _worker_pdf(pdfp=pdf_path, cb=_cb_pdf, mode=extract_mode, ak=api_key, bu=base_url):
             try:
                 def _control():
                     t = TASKS.get(task_id, {})
@@ -162,8 +194,8 @@ def upload():
                 process_pdf(
                     pdf_path=pdfp,
                     output_root=OUTPUT_DIR,
-                    api_key=os.getenv("ARK_API_KEY"),
-                    base_url=os.getenv("ARK_BASE_URL").rstrip("/"),
+                    api_key=ak,
+                    base_url=bu.rstrip("/"),
                     model=os.getenv("ARK_MODEL", "doubao-seed-1-6-vision-250815"),
                     dpi=int(os.getenv("ARK_DPI", "200")),
                     progress_cb=cb,
@@ -232,7 +264,7 @@ def upload():
                 t["status"] = "completed"
                 t["done"] = data.get("done", t["done"]) or t["total"]
 
-        def _worker_images(imgs=image_paths, bname=batch_id, cb=_cb_imgs, mode=extract_mode):
+        def _worker_images(imgs=image_paths, bname=batch_id, cb=_cb_imgs, mode=extract_mode, ak=api_key, bu=base_url):
             try:
                 def _control():
                     t = TASKS.get(task_id, {})
@@ -241,8 +273,8 @@ def upload():
                     image_paths=imgs,
                     batch_name=bname,  # 使用批次ID保存文件（避免文件名冲突）
                     output_root=OUTPUT_DIR,
-                    api_key=os.getenv("ARK_API_KEY"),
-                    base_url=os.getenv("ARK_BASE_URL").rstrip("/"),
+                    api_key=ak,
+                    base_url=bu.rstrip("/"),
                     model=os.getenv("ARK_MODEL", "doubao-seed-1-6-vision-250815"),
                     progress_cb=cb,
                     max_workers=int(os.getenv("ARK_WORKERS", "4")),
@@ -318,6 +350,21 @@ def status(task_id: str):
         "mode": t.get("mode", "text"),  # 返回识别模式
         "elapsed_time": elapsed_time,  # 返回已用时间（秒）
     }
+
+
+@app.route("/auth_admin", methods=["POST"])
+def auth_admin():
+    """校验管理密码，用于前端预检。后续上传仍会再次校验。"""
+    admin_password = request.form.get("admin_password", "").strip()
+    env_admin_pwd = os.getenv("ARK_ADMIN_PASSWORD", "").strip()
+
+    if not env_admin_pwd:
+        return {"ok": False, "error": "服务器未设置管理密码"}, 400
+    if not admin_password:
+        return {"ok": False, "error": "缺少管理密码"}, 400
+    if admin_password != env_admin_pwd:
+        return {"ok": False, "error": "管理密码错误"}, 403
+    return {"ok": True}
 
 
 @app.route("/download/<pdf_name>.zip")

@@ -169,6 +169,92 @@
       color: #6b7280;
       font-size: 13px;
     }
+    
+    /* API 配置输入框样式 */
+    .api-config {
+      margin-top: 20px;
+      padding: 20px;
+      background: #f9fafb;
+      border-radius: 12px;
+      border: 1px solid #e5e7eb;
+    }
+    .api-config-title {
+      font-size: 14px;
+      font-weight: 600;
+      color: #374151;
+      margin-bottom: 12px;
+      display: flex;
+      align-items: center;
+      gap: 8px;
+    }
+    .api-config-toggle {
+      margin-left: auto;
+      font-size: 12px;
+      color: #667eea;
+      cursor: pointer;
+      text-decoration: underline;
+    }
+    .api-config-toggle:hover {
+      color: #764ba2;
+    }
+    .api-config-fields {
+      display: none;
+      gap: 12px;
+    }
+    .api-config-fields.show {
+      display: flex;
+      flex-direction: column;
+    }
+    .api-input-group {
+      display: flex;
+      flex-direction: column;
+      gap: 6px;
+    }
+    .inline-row {
+      display: flex;
+      gap: 12px;
+      align-items: center;
+      flex-wrap: wrap;
+    }
+    .small-btn {
+      padding: 8px 12px;
+      font-size: 13px;
+      background: #667eea;
+      color: #fff;
+      border: none;
+      border-radius: 8px;
+      cursor: pointer;
+      transition: transform 0.2s, box-shadow 0.2s;
+    }
+    .small-btn:disabled {
+      background: #9ca3af;
+      cursor: not-allowed;
+      transform: none;
+      box-shadow: none;
+    }
+    .api-input-label {
+      font-size: 13px;
+      color: #6b7280;
+      font-weight: 500;
+    }
+    .api-input {
+      width: 100%;
+      padding: 10px 12px;
+      border: 1px solid #d1d5db;
+      border-radius: 8px;
+      font-size: 14px;
+      font-family: monospace;
+      transition: border-color 0.2s;
+      box-sizing: border-box;
+    }
+    .api-input:focus {
+      outline: none;
+      border-color: #667eea;
+      box-shadow: 0 0 0 3px rgba(102, 126, 234, 0.1);
+    }
+    .api-input::placeholder {
+      color: #9ca3af;
+    }
   </style>
 </head>
 <body>
@@ -177,14 +263,40 @@
     <p class="subtitle">支持文字识别和表格提取，灵活输出 Word 或 Excel 文档</p>
     
     {% if ark_ok %}
-      <div class="hint ok">✅ 豆包 API 已配置，可直接上传处理。</div>
+      <div class="hint ok">✅ 检测到服务器已配置默认 API（但默认仍需填写 API key 或输入管理密码后才能处理）。</div>
     {% else %}
-      <div class="hint error">❌ 未检测到 API 配置。请在终端先设置环境变量：<code>export ARK_API_KEY=...; export ARK_BASE_URL=https://ark.cn-beijing.volces.com/api/v3</code><br><small>（通过火山引擎 Ark 平台访问豆包 Vision API）</small></div>
+      <div class="hint error">❌ 未检测到服务器默认 API 配置，请填写 API key，或联系管理员配置环境变量后再用管理密码调用。</div>
     {% endif %}
-    <div class="hint">当前图片来源模式：<b>{{ source }}</b>（可通过环境变量 <code>ARK_SOURCE</code> 设置为 <code>both</code> / <code>embedded</code> / <code>page</code>）</div>
+    <div class="hint">使用前请先完成 API 配置：填写自己的 API key，或输入管理密码以使用服务器默认配置。当前图片来源模式：<b>{{ source }}</b>（可通过环境变量 <code>ARK_SOURCE</code> 设置为 <code>both</code> / <code>embedded</code> / <code>page</code>）。</div>
 
     <form class="row" method="post" enctype="multipart/form-data" action="/upload">
-      <div class="file-input-wrapper" onclick="document.getElementById('fileInput').click()">
+      <!-- API 配置输入框 -->
+      <div class="api-config">
+        <div class="api-config-title">
+          <span>🔑 API 配置（必填，任选其一）</span>
+          <span class="api-config-toggle" onclick="toggleApiConfig()">展开/收起</span>
+        </div>
+        <div class="api-config-fields" id="apiConfigFields">
+          <div class="api-input-group">
+            <label class="api-input-label">API Key</label>
+            <input type="text" name="api_key" class="api-input" placeholder="填写后直接使用该 key 调用" />
+          </div>
+          <div class="api-input-group">
+            <label class="api-input-label">Base URL</label>
+            <input type="text" name="base_url" class="api-input" placeholder="例如: https://ark.cn-beijing.volces.com/api/v3" value="{{ default_base_url }}" />
+          </div>
+          <div class="api-input-group">
+            <label class="api-input-label">管理密码（使用服务器默认配置）</label>
+            <div class="inline-row">
+              <input type="password" name="admin_password" class="api-input" placeholder="输入正确密码后将使用服务器环境变量中的 API 配置" />
+              <button type="button" class="small-btn" id="verifyAdminBtn">验证密码并启用默认配置</button>
+            </div>
+            <small class="api-input-label" id="adminPwdHint" style="font-weight:400;color:#9ca3af;">不会在前端显示具体密钥，密码错误会被拒绝。{% if not admin_password_set %}（当前服务器未设置管理密码）{% endif %}</small>
+          </div>
+        </div>
+      </div>
+
+      <div class="file-input-wrapper" onclick="handleFileClick()">
         <input type="file" id="fileInput" name="files" accept="application/pdf,image/*" multiple />
         <p class="file-label">
           <strong>点击选择</strong> 或拖放文件到这里<br>
@@ -215,7 +327,7 @@
       </div>
       
       <div class="row">
-        <button type="submit" {% if not ark_ok %}disabled{% endif %}>🚀 开始处理</button>
+        <button type="submit" id="submitBtn">🚀 开始处理</button>
       </div>
     </form>
 
@@ -243,6 +355,32 @@
     const fileInput = document.getElementById('fileInput');
     const wrapper = document.querySelector('.file-input-wrapper');
     const label = wrapper.querySelector('.file-label');
+    const submitBtn = document.getElementById('submitBtn');
+    const apiKeyInput = document.querySelector('input[name="api_key"]');
+    const baseUrlInput = document.querySelector('input[name="base_url"]');
+    const adminPwdInput = document.querySelector('input[name="admin_password"]');
+    const verifyAdminBtn = document.getElementById('verifyAdminBtn');
+    const adminPwdHint = document.getElementById('adminPwdHint');
+    let adminVerified = false;
+    
+    // 检查是否需要禁用提交按钮
+    function checkSubmitButton() {
+      const hasFiles = fileInput.files.length > 0;
+      const hasApiKey = apiKeyInput.value.trim().length > 0 && baseUrlInput.value.trim().length > 0;
+      const ready = hasApiKey || adminVerified;
+
+      submitBtn.disabled = !hasFiles || !ready;
+
+      if (!ready) {
+        wrapper.style.borderColor = '#d1d5db';
+        wrapper.style.background = '#fff';
+        label.innerHTML = `<strong>请先完成 API 配置</strong><br><small>填写 API Key 或输入管理密码后再选择文件</small>`;
+      } else if (fileInput.files.length === 0) {
+        label.innerHTML = `<strong>点击选择</strong> 或拖放文件到这里<br><small>支持 PDF、PNG、JPG、JPEG、BMP、WebP</small>`;
+        wrapper.style.borderColor = '#d1d5db';
+        wrapper.style.background = '#fff';
+      }
+    }
     
     fileInput.addEventListener('change', function() {
       if (this.files.length > 0) {
@@ -250,6 +388,76 @@
         label.innerHTML = `<strong>已选择 ${this.files.length} 个文件</strong><br><small>${names}</small>`;
         wrapper.style.borderColor = '#16a34a';
         wrapper.style.background = '#f0fdf4';
+      }
+      checkSubmitButton();
+    });
+    
+    // 监听 API 配置输入
+    apiKeyInput.addEventListener('input', checkSubmitButton);
+    baseUrlInput.addEventListener('input', checkSubmitButton);
+    adminPwdInput.addEventListener('input', () => {
+      adminVerified = false;
+      adminPwdHint.textContent = '不会在前端显示具体密钥，密码错误会被拒绝。{% if not admin_password_set %}（当前服务器未设置管理密码）{% endif %}';
+      adminPwdHint.style.color = '#9ca3af';
+      checkSubmitButton();
+    });
+    
+    // 初始检查
+    checkSubmitButton();
+    
+    // 切换 API 配置显示
+    function toggleApiConfig() {
+      const fields = document.getElementById('apiConfigFields');
+      fields.classList.toggle('show');
+    }
+
+    // 文件框点击时，如果未配置 API，则提示
+    function handleFileClick() {
+      const hasApiKey = apiKeyInput.value.trim().length > 0 && baseUrlInput.value.trim().length > 0;
+      if (!hasApiKey && !adminVerified) {
+        alert('请先填写 API Key，或点击“验证密码并启用默认配置”');
+        return;
+      }
+      fileInput.click();
+    }
+    
+    // 默认展开，便于立即填写
+    toggleApiConfig();
+
+    // 验证管理密码（前端预检，不泄露密钥；上传时后端仍会再次校验）
+    verifyAdminBtn.addEventListener('click', async () => {
+      const pwd = adminPwdInput.value.trim();
+      if (!pwd) {
+        adminPwdHint.textContent = '请先输入管理密码';
+        adminPwdHint.style.color = '#b91c1c';
+        adminVerified = false;
+        checkSubmitButton();
+        return;
+      }
+      verifyAdminBtn.disabled = true;
+      verifyAdminBtn.textContent = '验证中...';
+      try {
+        const formData = new FormData();
+        formData.append('admin_password', pwd);
+        const resp = await fetch('/auth_admin', { method: 'POST', body: formData });
+        const data = await resp.json();
+        if (resp.ok && data.ok) {
+          adminVerified = true;
+          adminPwdHint.textContent = '验证通过，已使用服务器默认配置';
+          adminPwdHint.style.color = '#16a34a';
+        } else {
+          adminVerified = false;
+          adminPwdHint.textContent = data.error || '验证失败';
+          adminPwdHint.style.color = '#b91c1c';
+        }
+      } catch (e) {
+        adminVerified = false;
+        adminPwdHint.textContent = '网络异常，稍后重试';
+        adminPwdHint.style.color = '#b91c1c';
+      } finally {
+        verifyAdminBtn.disabled = false;
+        verifyAdminBtn.textContent = '验证密码并启用默认配置';
+        checkSubmitButton();
       }
     });
   </script>
