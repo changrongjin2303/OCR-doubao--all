@@ -86,6 +86,9 @@
       <span>⏳ 处理中：{{ t.pdf_name }}</span>
       <span class="timer-box" id="elapsedTime">00:00</span>
     </h1>
+    <div class="row meta" id="usageRow" style="display:none; margin-top:0;">
+      Token 消耗：<span id="usageText">-</span>
+    </div>
     <div class="meta">
       模式：<b>{% if mode == 'table' %}📊 表格提取 → Excel{% else %}📝 文字识别 → Word{% endif %}</b>
       &nbsp;|&nbsp;
@@ -170,6 +173,16 @@
         document.getElementById('fill').style.width = pct + '%';
         document.getElementById('progress').textContent = `${done} / ${total}`;
         document.getElementById('statusText').textContent = `状态：${j.status}`;
+
+        // 显示 token 消耗
+        const usage = j.usage || {};
+        const uPrompt = usage.prompt || 0;
+        const uCompletion = usage.completion || 0;
+        const uTotal = usage.total || 0;
+        if (uPrompt || uCompletion || uTotal) {
+          document.getElementById('usageRow').style.display = '';
+          document.getElementById('usageText').textContent = `prompt=${uPrompt} | completion=${uCompletion} | total=${uTotal}`;
+        }
         
         // 更新计时器（使用服务器返回的时间，更准确）
         if (j.elapsed_time !== undefined) {

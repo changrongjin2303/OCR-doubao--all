@@ -165,6 +165,7 @@ def upload():
             "control": {"paused": False, "stop": False},
             "mode": extract_mode,  # 记录识别模式
             "start_time": time.time(),  # 记录开始时间
+            "usage": {"prompt": 0, "completion": 0, "total": 0},
         }
 
         def _cb_pdf(event: str, data: Dict[str, Any], tid=task_id):
@@ -182,9 +183,21 @@ def upload():
                 err = data.get("error")
                 if err:
                     t["errors"].append({"image": data.get("image"), "error": err})
+                usage_delta = data.get("usage") or {}
+                if usage_delta:
+                    u = t.setdefault("usage", {"prompt": 0, "completion": 0, "total": 0})
+                    u["prompt"] += usage_delta.get("prompt", 0) or 0
+                    u["completion"] += usage_delta.get("completion", 0) or 0
+                    u["total"] += usage_delta.get("total", 0) or 0
             elif event == "finish":
                 t["status"] = "completed"
                 t["done"] = data.get("done", t["done"]) or t["total"]
+                usage_delta = data.get("usage") or {}
+                if usage_delta:
+                    u = t.setdefault("usage", {"prompt": 0, "completion": 0, "total": 0})
+                    u["prompt"] += usage_delta.get("prompt", 0) or 0
+                    u["completion"] += usage_delta.get("completion", 0) or 0
+                    u["total"] += usage_delta.get("total", 0) or 0
 
         def _worker_pdf(pdfp=pdf_path, cb=_cb_pdf, mode=extract_mode, ak=api_key, bu=base_url):
             try:
@@ -243,6 +256,7 @@ def upload():
             "control": {"paused": False, "stop": False},
             "mode": extract_mode,  # 记录识别模式
             "start_time": time.time(),  # 记录开始时间
+            "usage": {"prompt": 0, "completion": 0, "total": 0},
         }
 
         def _cb_imgs(event: str, data: Dict[str, Any], tid=task_id):
@@ -260,9 +274,21 @@ def upload():
                 err = data.get("error")
                 if err:
                     t["errors"].append({"image": data.get("image"), "error": err})
+                usage_delta = data.get("usage") or {}
+                if usage_delta:
+                    u = t.setdefault("usage", {"prompt": 0, "completion": 0, "total": 0})
+                    u["prompt"] += usage_delta.get("prompt", 0) or 0
+                    u["completion"] += usage_delta.get("completion", 0) or 0
+                    u["total"] += usage_delta.get("total", 0) or 0
             elif event == "finish":
                 t["status"] = "completed"
                 t["done"] = data.get("done", t["done"]) or t["total"]
+                usage_delta = data.get("usage") or {}
+                if usage_delta:
+                    u = t.setdefault("usage", {"prompt": 0, "completion": 0, "total": 0})
+                    u["prompt"] += usage_delta.get("prompt", 0) or 0
+                    u["completion"] += usage_delta.get("completion", 0) or 0
+                    u["total"] += usage_delta.get("total", 0) or 0
 
         def _worker_images(imgs=image_paths, bname=batch_id, cb=_cb_imgs, mode=extract_mode, ak=api_key, bu=base_url):
             try:
@@ -349,6 +375,7 @@ def status(task_id: str):
         "control": t.get("control", {}),
         "mode": t.get("mode", "text"),  # 返回识别模式
         "elapsed_time": elapsed_time,  # 返回已用时间（秒）
+        "usage": t.get("usage", {"prompt": 0, "completion": 0, "total": 0}),
     }
 
 

@@ -79,7 +79,7 @@ def to_data_uri(image_path: Path) -> str:
     return f"data:{mime};base64,{b64}"
 
 
-def call_doubao_extract_tables(image_path: Path, api_key: str, base_url: str, model: str) -> str:
+def call_doubao_extract_tables(image_path: Path, api_key: str, base_url: str, model: str) -> Tuple[str, Dict[str, int]]:
     """旧版表格提取函数，保留以兼容"""
     data_uri = to_data_uri(image_path)
     prompt = (
@@ -106,6 +106,8 @@ def call_doubao_extract_tables(image_path: Path, api_key: str, base_url: str, mo
                 ],
             }
         ],
+        # 关闭思考模式，加快响应并去掉思维链输出
+        "thinking": {"type": "disabled"},
     }
 
     # 从环境读取可配置超时与重试次数
@@ -137,6 +139,7 @@ def call_doubao_extract_tables(image_path: Path, api_key: str, base_url: str, mo
             raise
     # Try to unify text output across possible response shapes
     text = None
+    usage = {}
     if isinstance(j, dict):
         if "choices" in j and j["choices"]:
             msg = j["choices"][0].get("message", {})
@@ -156,10 +159,19 @@ def call_doubao_extract_tables(image_path: Path, api_key: str, base_url: str, mo
             text = j.get("output_text")
     if not text:
         text = resp.text
-    return text
+
+    # 提取 usage
+    if isinstance(j, dict) and isinstance(j.get("usage"), dict):
+        u = j.get("usage", {})
+        usage = {
+            "prompt": int(u.get("prompt_tokens", 0) or 0),
+            "completion": int(u.get("completion_tokens", 0) or 0),
+            "total": int(u.get("total_tokens", 0) or 0),
+        }
+    return text, usage
 
 
-def call_doubao_extract_text(image_path: Path, api_key: str, base_url: str, model: str) -> str:
+def call_doubao_extract_text(image_path: Path, api_key: str, base_url: str, model: str) -> Tuple[str, Dict[str, int]]:
     """新版文字提取函数，识别所有文字并按层级结构组织"""
     data_uri = to_data_uri(image_path)
     prompt = (
@@ -227,6 +239,8 @@ def call_doubao_extract_text(image_path: Path, api_key: str, base_url: str, mode
                 ],
             }
         ],
+        # 关闭思考模式，加快响应并去掉思维链输出
+        "thinking": {"type": "disabled"},
     }
 
     read_timeout = int(os.getenv("ARK_TIMEOUT", "180"))
@@ -252,6 +266,7 @@ def call_doubao_extract_text(image_path: Path, api_key: str, base_url: str, mode
             raise
 
     text = None
+    usage = {}
     if isinstance(j, dict):
         if "choices" in j and j["choices"]:
             msg = j["choices"][0].get("message", {})
@@ -271,7 +286,15 @@ def call_doubao_extract_text(image_path: Path, api_key: str, base_url: str, mode
             text = j.get("output_text")
     if not text:
         text = resp.text
-    return text
+
+    if isinstance(j, dict) and isinstance(j.get("usage"), dict):
+        u = j.get("usage", {})
+        usage = {
+            "prompt": int(u.get("prompt_tokens", 0) or 0),
+            "completion": int(u.get("completion_tokens", 0) or 0),
+            "total": int(u.get("total_tokens", 0) or 0),
+        }
+    return text, usage
 
 
 def parse_model_output_to_content(text: str) -> List[Dict[str, Any]]:
@@ -658,28 +681,29 @@ def process_pdf(
     if extract_mode == "table":
         def _process_one(img_path: Path) -> Tuple[Path, Optional[str], Any]:
             try:
-                raw_text = call_doubao_extract_tables(img_path, api_key, base_url, model)
+                raw_text, usage = call_doubao_extract_tables(img_path, api_key, base_url, model)
                 tables = parse_model_output_to_tables(raw_text)
                 if not tables:
-                    return img_path, "no_tables", None
-                return img_path, None, tables
+                    return img_path, "no_tables", None, usage
+                return img_path, None, tables, usage
             except Exception as e:
-                return img_path, str(e), None
+                return img_path, str(e), None, {}
         no_result_msg = "no_tables"
     else:
         def _process_one(img_path: Path) -> Tuple[Path, Optional[str], Any]:
             try:
-                raw_text = call_doubao_extract_text(img_path, api_key, base_url, model)
+                raw_text, usage = call_doubao_extract_text(img_path, api_key, base_url, model)
                 content_list = parse_model_output_to_content(raw_text)
                 if not content_list:
-                    return img_path, "no_content", None
-                return img_path, None, content_list
+                    return img_path, "no_content", None, usage
+                return img_path, None, content_list, usage
             except Exception as e:
-                return img_path, str(e), None
+                return img_path, str(e), None, {}
         no_result_msg = "no_content"
 
     done = 0
     image_results: List[Tuple[str, Any]] = []
+    usage_totals = {"prompt": 0, "completion": 0, "total": 0}
     
     def _wait_if_paused():
         if not control_getter:
@@ -709,11 +733,15 @@ def process_pdf(
                 done_set, _ = wait(running, timeout=0.5, return_when=FIRST_COMPLETED)
                 for fut in done_set:
                     running.remove(fut)
-                    img_path, err, result_data = fut.result()
+                    img_path, err, result_data, usage_delta = fut.result()
                     seen.add(img_path)
                     done += 1
+                    if usage_delta:
+                        usage_totals["prompt"] += usage_delta.get("prompt", 0) or 0
+                        usage_totals["completion"] += usage_delta.get("completion", 0) or 0
+                        usage_totals["total"] += usage_delta.get("total", 0) or 0
                     if progress_cb:
-                        progress_cb("step", {"pdf_name": pdf_name, "done": done, "total": total, "image": img_path.name, "error": err})
+                        progress_cb("step", {"pdf_name": pdf_name, "done": done, "total": total, "image": img_path.name, "error": err, "usage": usage_delta})
                     if err:
                         print(f"[WARN] 处理 {img_path.name} 失败: {err}")
                     else:
@@ -734,10 +762,14 @@ def process_pdf(
             if _wait_if_paused():
                 break
             seen.add(img_path)
-            img_path, err, result_data = _process_one(img_path)
+            img_path, err, result_data, usage_delta = _process_one(img_path)
             done += 1
+            if usage_delta:
+                usage_totals["prompt"] += usage_delta.get("prompt", 0) or 0
+                usage_totals["completion"] += usage_delta.get("completion", 0) or 0
+                usage_totals["total"] += usage_delta.get("total", 0) or 0
             if progress_cb:
-                progress_cb("step", {"pdf_name": pdf_name, "done": done, "total": total, "image": img_path.name, "error": err})
+                progress_cb("step", {"pdf_name": pdf_name, "done": done, "total": total, "image": img_path.name, "error": err, "usage": usage_delta})
             if err:
                 print(f"[WARN] 处理 {img_path.name} 失败: {err}")
             else:
@@ -746,7 +778,7 @@ def process_pdf(
                     image_results.append((img_path.name, result_data))
 
     if progress_cb:
-        progress_cb("finish", {"pdf_name": pdf_name, "done": done, "total": total})
+        progress_cb("finish", {"pdf_name": pdf_name, "done": done, "total": total, "usage": usage_totals})
 
     # 根据模式输出不同格式
     image_results_sorted = sorted(image_results, key=lambda x: order_map.get(x[0], 10**9))
@@ -836,29 +868,30 @@ def process_images(
 
     # 根据模式选择处理函数
     if extract_mode == "table":
-        def _process_one(img_path: Path) -> Tuple[Path, Optional[str], Any]:
+        def _process_one(img_path: Path) -> Tuple[Path, Optional[str], Any, Dict[str, int]]:
             try:
-                raw_text = call_doubao_extract_tables(img_path, api_key, base_url, model)
+                raw_text, usage = call_doubao_extract_tables(img_path, api_key, base_url, model)
                 tables = parse_model_output_to_tables(raw_text)
                 if not tables:
-                    return img_path, "no_tables", None
-                return img_path, None, tables
+                    return img_path, "no_tables", None, usage
+                return img_path, None, tables, usage
             except Exception as e:
-                return img_path, str(e), None
+                return img_path, str(e), None, {}
     else:
-        def _process_one(img_path: Path) -> Tuple[Path, Optional[str], Any]:
+        def _process_one(img_path: Path) -> Tuple[Path, Optional[str], Any, Dict[str, int]]:
             try:
-                raw_text = call_doubao_extract_text(img_path, api_key, base_url, model)
+                raw_text, usage = call_doubao_extract_text(img_path, api_key, base_url, model)
                 content_list = parse_model_output_to_content(raw_text)
                 if not content_list:
-                    return img_path, "no_content", None
-                return img_path, None, content_list
+                    return img_path, "no_content", None, usage
+                return img_path, None, content_list, usage
             except Exception as e:
-                return img_path, str(e), None
+                return img_path, str(e), None, {}
 
     done = 0
     image_results: List[Tuple[str, Any]] = []
     seen = set()
+    usage_totals = {"prompt": 0, "completion": 0, "total": 0}
     
     def _wait_if_paused():
         if not control_getter:
@@ -886,11 +919,15 @@ def process_images(
                 done_set, _ = wait(running, timeout=0.5, return_when=FIRST_COMPLETED)
                 for fut in done_set:
                     running.remove(fut)
-                    img_path, err, result_data = fut.result()
+                    img_path, err, result_data, usage_delta = fut.result()
                     seen.add(img_path)
                     done += 1
+                    if usage_delta:
+                        usage_totals["prompt"] += usage_delta.get("prompt", 0) or 0
+                        usage_totals["completion"] += usage_delta.get("completion", 0) or 0
+                        usage_totals["total"] += usage_delta.get("total", 0) or 0
                     if progress_cb:
-                        progress_cb("step", {"pdf_name": batch_name, "done": done, "total": total, "image": img_path.name, "error": err})
+                        progress_cb("step", {"pdf_name": batch_name, "done": done, "total": total, "image": img_path.name, "error": err, "usage": usage_delta})
                     if not err and result_data:
                         image_results.append((img_path.name, result_data))
                     if _wait_if_paused():
@@ -906,15 +943,19 @@ def process_images(
             if _wait_if_paused():
                 break
             seen.add(img_path)
-            img_path, err, result_data = _process_one(img_path)
+            img_path, err, result_data, usage_delta = _process_one(img_path)
             done += 1
+            if usage_delta:
+                usage_totals["prompt"] += usage_delta.get("prompt", 0) or 0
+                usage_totals["completion"] += usage_delta.get("completion", 0) or 0
+                usage_totals["total"] += usage_delta.get("total", 0) or 0
             if progress_cb:
-                progress_cb("step", {"pdf_name": batch_name, "done": done, "total": total, "image": img_path.name, "error": err})
+                progress_cb("step", {"pdf_name": batch_name, "done": done, "total": total, "image": img_path.name, "error": err, "usage": usage_delta})
             if not err and result_data:
                 image_results.append((img_path.name, result_data))
 
     if progress_cb:
-        progress_cb("finish", {"pdf_name": batch_name, "done": done, "total": total})
+        progress_cb("finish", {"pdf_name": batch_name, "done": done, "total": total, "usage": usage_totals})
 
     # 根据模式输出不同格式
     image_results_sorted = sorted(image_results, key=lambda x: order_map.get(x[0], 10**9))
